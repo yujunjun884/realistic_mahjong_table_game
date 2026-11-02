@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <!-- 設定網頁編碼為 UTF-8 以正確顯示中文字元 -->
+    <meta charset="UTF-8">
+    <!-- 設定響應式視埠 (Viewport)，確保在各式螢幕尺寸（包含手機與平板）均能自動縮放 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>真實風格 3D 麻將桌模擬器 (Mahjong Table Simulator)</title>
+    
+    <!-- 引入 Tailwind CSS 快速設計工具庫 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 FontAwesome 圖示庫庫（用於按鈕圖示與介面裝飾） -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* 引入 Google 漢字標準字體以提升麻將牌面的文字質感 */
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&display=swap');
+
+        /* 全局基礎樣式設定 */
+        body {
+            font-family: 'Noto Serif TC', serif, system-ui, sans-serif;
+            user-select: none; /* 禁止文字選取，提升類似原生 App 的操作體驗 */
+            overflow: hidden; /* 防止視窗出現滾動條 */
+            background-color: #0f172a; /* 背景使用深藍灰色襯托麻將桌 */
+        }
+
+        /* 麻將外框木紋桌邊飾效果 */
+        .mahjong-table-outer {
+            background: radial-gradient(circle, #8b4513 0%, #3d1e0b 100%);
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.8), 0 20px 50px rgba(0,0,0,0.9);
+            border: 16px solid #2d1507;
+            border-radius: 40px;
+        }
+
+        /* 麻將桌絨布綠氈質感 (Felt surface) */
+        .mahjong-felt {
+            background-color: #0f5429;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(20, 110, 50, 0.8) 0%, rgba(8, 40, 18, 0.95) 100%),
+                repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 2px, transparent 2px, transparent 4px);
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.6);
+        }
+
+        /* ===== 麻將牌擬真 3D 立體樣式 (Mahjong Tile 3D Styles) ===== */
+        .mj-tile {
+            width: 42px;
+            height: 58px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #ffffff 0%, #f4edd4 80%, #dfd3b2 100%);
+            box-shadow: 
+                -2px 3px 0px #b5a47e,
+                -4px 6px 0px #807151,
+                -6px 8px 6px rgba(0, 0, 0, 0.4),
+                inset 0 1px 2px rgba(255, 255, 255, 0.9);
+            border: 1px solid #c8b995;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.15s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            font-weight: 900;
+        }
+
+        /* 牌背立體 3D 質感 (竹綠/湛藍背) */
+        .mj-tile-back {
+            background: linear-gradient(135deg, #1b7a43 0%, #0d4d29 100%);
+            box-shadow: 
+                -2px 3px 0px #09331b,
+                -4px 6px 0px #04190d,
+                -6px 8px 6px rgba(0, 0, 0, 0.5);
+            border: 1px solid #239452;
+        }
+
+        /* 鼠標懸停手牌懸浮動畫效果 */
+        .mj-tile-hand:hover {
+            transform: translateY(-14px) scale(1.05);
+            box-shadow: 
+                -2px 17px 0px #b5a47e,
+                -4px 20px 0px #807151,
+                0px 22px 15px rgba(0, 0, 0, 0.5);
+            z-index: 30;
+        }
+
+        /* 手牌選取高亮狀態 (Selected status) */
+        .mj-tile-selected {
+            transform: translateY(-20px) !important;
+            border: 2px solid #3b82f6 !important;
+            box-shadow: 0 0 15px #3b82f6, -2px 20px 0px #b5a47e !important;
+        }
+
+        /* 牌花文字顏色類別 (Character color coding) */
+        .text-wan { color: #cc1111; }     /* 萬子：經典鮮紅 */
+        .text-tong { color: #15803d; }    /* 筒子：深綠 */
+        .text-tiao { color: #1e40af; }    /* 條子：寶藍 */
+        .text-feng { color: #111827; }    /* 風牌：墨黑 */
+        .text-zhong { color: #dc2626; }   /* 紅中：鮮紅 */
+        .text-fa { color: #16a34a; }      /* 發財：綠色 */
+        .text-bai { color: #2563eb; }     /* 白板：邊框藍 */
+
+        /* 骰子立體擬真與旋轉轉場動畫 */
+        .dice {
+            width: 32px;
+            height: 32px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.2), 2px 2px 5px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: #111;
+        }
+
+        /* 骰子滾動旋轉 Keyframe 動畫 */
+        @keyframes roll {
+            0% { transform: rotate(0deg) scale(0.7); }
+            50% { transform: rotate(180deg) scale(1.2); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+
+        .animate-roll {
+            animation: roll 0.4s ease-out;
+        }
+
+        /* 海底棄牌區 (Discards Grid) 動態浮現特效 */
+        @keyframes discardPop {
+            0% { opacity: 0; transform: scale(2) translateY(-50px); }
+            100% opacity: 1; transform: scale(1) translateY(0);
+        }
+        
+        .discard-animate {
+            animation: discardPop 0.25s ease-out forwards;
+        }
+
+        /* 自訂滾動條，保持頁面簡潔美觀 */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between items-center p-2 sm:p-4 select-none">
+
+    <!-- ===== 頂部遊戲資訊與系統工具列 (Header Info & Bar) ===== -->
+    <header class="w-full max-w-6xl flex justify-between items-center bg-slate-900/80 backdrop-blur border border-slate-700/50 rounded-xl px-4 py-2 text-white shadow-lg z-50">
+        <!-- 品牌標題與局數標籤 -->
+        <div class="flex items-center space-x-3">
+            <div class="bg-amber-600 px-3 py-1 rounded-lg text-sm font-bold flex items-center gap-1 shadow">
+                <i class="fa-solid fa-gamepad"></i> 東風圈
+            </div>
+            <span class="text-xs sm:text-sm text-slate-300 font-medium">東家 (親家) | 第 1 局</span>
+        </div>
+
+        <!-- 牌牆剩餘張數與遊戲狀態記錄 -->
+        <div class="flex items-center space-x-6 text-sm">
+            <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1 rounded-md border border-slate-700">
+                <i class="fa-solid fa-layer-group text-amber-400"></i>
+                <span class="text-slate-400">牌牆剩餘:</span>
+                <span id="wall-count" class="text-amber-400 font-bold text-base">72</span> 張
+            </div>
+        </div>
+
+        <!-- 功能控制按鈕 (重開局/排序/靜音) -->
+        <div class="flex items-center space-x-2">
+            <button onclick="sortHandTiles()" class="bg-blue-600 hover:bg-blue-500 text-xs sm:text-sm px-3 py-1.5 rounded-lg transition shadow flex items-center gap-1">
+                <i class="fa-solid fa-arrow-down-a-z"></i> 理牌 (Sort)
+            </button>
+            <button onclick="initGame()" class="bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm px-3 py-1.5 rounded-lg transition shadow flex items-center gap-1">
+                <i class="fa-solid fa-rotate-right"></i> 重新開局
+            </button>
+        </div>
+    </header>
+
+    <!-- ===== 主要麻將桌區域 (Mahjong Table Main View) ===== -->
+    <main class="relative w-full max-w-5xl aspect-square max-h-[75vh] my-auto mahjong-table-outer p-3 sm:p-5 flex flex-col justify-between items-center shadow-2xl">
+        
+        <!-- 麻將桌面綠氈層 (Felt Table surface) -->
+        <div class="w-full h-full mahjong-felt rounded-2xl relative flex flex-col justify-between p-4 overflow-hidden">
+            
+            <!-- ---------------- 1. 對家 (North / Opponent Top) ---------------- -->
+            <div class="w-full flex flex-col items-center">
+                <!-- 對家玩家資訊 -->
+                <div class="flex items-center space-x-2 bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white text-xs mb-2 border border-white/10 shadow">
+                    <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                    <span class="font-bold">對家 (北家)</span>
+                    <span class="text-amber-300 font-mono" id="score-north">20,000 分</span>
+                </div>
+                <!-- 對家暗牌 (牌背樣式) -->
+                <div id="hand-north" class="flex space-x-1 justify-center opacity-90 scale-75 origin-top">
+                    <!-- 由 JavaScript 動態繪製牌背 -->
+                </div>
+            </div>
+
+            <!-- ---------------- 2. 中央桌面區域 (Center Table Area) ---------------- -->
+            <div class="absolute inset-0 m-auto w-3/5 h-3/5 flex flex-col justify-between items-center pointer-events-none">
+                
+                <!-- 左右兩家玩家資訊 (West & East Info Overlay) -->
+                <div class="w-full flex justify-between items-center px-2 z-10">
+                    <!-- 左家 (West) -->
+                    <div class="bg-black/40 backdrop-blur px-2.5 py-1 rounded-full text-white text-xs flex items-center gap-1.5 border border-white/10">
+                        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                        <span>西家</span>
+                        <span class="text-amber-300 font-mono" id="score-west">20,000</span>
+                    </div>
+                    
+                    <!-- 中央風圈與骰子羅盤顯示盤 (Compass & Dice Box) -->
+                    <div class="pointer-events-auto bg-slate-900/90 border-2 border-amber-600/60 shadow-2xl rounded-xl p-3 flex flex-col items-center space-y-2 text-white min-w-[150px]">
+                        <div class="text-xs text-amber-400 font-bold tracking-widest flex items-center gap-1">
+                            <i class="fa-regular fa-compass"></i> 東風圈 門風：東
+                        </div>
+                        <!-- 骰子區域 -->
+                        <div class="flex space-x-2 my-1" id="dice-container">
+                            <div class="dice">3</div>
+                            <div class="dice">5</div>
+                            <div class="dice">2</div>
+                        </div>
+                        <button onclick="rollDice()" class="text-xs bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-md transition shadow font-bold active:scale-95">
+                            擲骰子 (Roll)
+                        </button>
+                    </div>
+
+                    <!-- 右家 (East) -->
+                    <div class="bg-black/40 backdrop-blur px-2.5 py-1 rounded-full text-white text-xs flex items-center gap-1.5 border border-white/10">
+                        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                        <span>東家</span>
+                        <span class="text-amber-300 font-mono" id="score-east">20,000</span>
+                    </div>
+                </div>
+
+                <!-- 中央海底棄牌區 (Mahjong River Discards Pool) -->
+                <div class="w-full h-full absolute inset-0 pt-16 pb-16 px-12 flex items-center justify-center">
+                    <div id="discard-river" class="w-full h-full bg-black/20 rounded-xl border border-white/5 p-2 grid grid-cols-8 gap-1.5 overflow-y-auto content-start justify-items-center">
+                        <!-- 已出牌會在這裡動態渲染 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- ---------------- 3. 左右兩家暗牌邊緣顯示 (West & East Hands) ---------------- -->
+            <!-- 西家 (Left) 手牌背影 -->
+            <div id="hand-west" class="absolute left-2 top-1/2 -translate-y-1/2 flex flex-col space-y-1 opacity-80 scale-75 origin-left">
+                <!-- JavaScript 生成 -->
+            </div>
+            <!-- 東家 (Right) 手牌背影 -->
+            <div id="hand-east" class="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col space-y-1 opacity-80 scale-75 origin-right">
+                <!-- JavaScript 生成 -->
+            </div>
+
+            <!-- ---------------- 4. 本家/玩家 (South / Player Bottom) ---------------- -->
+            <div class="w-full flex flex-col items-center z-20">
+                <!-- 玩家副露/鳴牌區域 (吃碰槓的牌型放置區) -->
+                <div id="player-melds" class="flex space-x-3 mb-2 min-h-[40px]">
+                    <!-- 動態存放本家吃/碰/槓的牌組合 -->
+                </div>
+
+                <!-- 本家資訊條與輪到誰的指示燈 -->
+                <div class="flex items-center space-x-3 bg-black/60 backdrop-blur px-4 py-1 rounded-full text-white text-xs mb-3 border border-amber-500/40 shadow">
+                    <span id="turn-indicator" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-bold text-amber-300">本家 (南家 - 你)</span>
+                    <span class="text-slate-300">|</span>
+                    <span class="text-amber-300 font-mono" id="score-south">20,000 分</span>
+                </div>
+
+                <!-- 本家手牌 Container (含摸牌與手牌) -->
+                <div class="flex items-end space-x-4">
+                    <!-- 主手牌容器 -->
+                    <div id="player-hand" class="flex space-x-1.5 sm:space-x-2 items-end min-h-[65px] px-2 py-1">
+                        <!-- 由 JavaScript 動態生成可點擊的手牌 -->
+                    </div>
+                    
+                    <!-- 摸到的第17張牌 (摸牌獨立間距放置) -->
+                    <div id="drawn-tile-container" class="border-l-2 border-white/20 pl-3 min-h-[65px] flex items-end">
+                        <!-- JavaScript 將新摸到的牌放入此處 -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ===== 底部操作動作按鈕區 (Bottom Action Toolbar) ===== -->
+    <footer class="w-full max-w-4xl bg-slate-900/90 backdrop-blur border border-slate-700/60 rounded-xl p-3 text-white shadow-2xl flex flex-wrap justify-between items-center gap-2 z-50">
+        
+        <!-- 狀態提詞訊息 -->
+        <div id="status-message" class="text-xs sm:text-sm text-amber-300 font-medium flex items-center gap-2 px-2">
+            <i class="fa-solid fa-circle-info text-blue-400"></i> 請點選「摸牌」開始您的回合，或點擊手牌進行「出牌」。
+        </div>
+
+        <!-- 遊戲操作功能按鈕組 (Action Controls) -->
+        <div class="flex items-center space-x-2">
+            <!-- 摸牌按鈕 -->
+            <button id="btn-draw" onclick="playerDrawTile()" class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-bold px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5 active:scale-95">
+                <i class="fa-solid fa-hand-pointer"></i> 摸牌 (Draw)
+            </button>
+            
+            <!-- 打牌按鈕 (亦可直接點擊手牌) -->
+            <button id="btn-discard" onclick="discardSelectedTile()" disabled class="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-bold px-4 py-2 rounded-lg transition shadow flex items-center gap-1.5 active:scale-95">
+                <i class="fa-solid fa-paper-plane"></i> 打牌 (Discard)
+            </button>
+            
+            <!-- 吃牌 -->
+            <button id="btn-chow" onclick="triggerAction('吃')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs sm:text-sm font-bold px-3 py-2 rounded-lg transition shadow active:scale-95">
+                吃 (Chow)
+            </button>
+            
+            <!-- 碰牌 -->
+            <button id="btn-pong" onclick="triggerAction('碰')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs sm:text-sm font-bold px-3 py-2 rounded-lg transition shadow active:scale-95">
+                碰 (Pong)
+            </button>
+            
+            <!-- 槓牌 -->
+            <button id="btn-gang" onclick="triggerAction('槓')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs sm:text-sm font-bold px-3 py-2 rounded-lg transition shadow active:scale-95">
+                槓 (Gang)
+            </button>
+            
+            <!-- 胡牌按鈕 (高亮主題) -->
+            <button id="btn-win" onclick="triggerAction('胡')" class="bg-rose-600 hover:bg-rose-500 text-white text-xs sm:text-sm font-extrabold px-4 py-2 rounded-lg transition shadow-lg flex items-center gap-1 active:scale-95">
+                <i class="fa-solid fa-trophy"></i> 胡 (Win)
+            </button>
+        </div>
+    </footer>
+
+    <!-- ===== 提示彈窗訊息 (Custom Modal Dialog for Wins/Announcements) ===== -->
+    <div id="game-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-800 border border-slate-600 rounded-2xl p-6 max-w-sm w-full text-center text-white shadow-2xl space-y-4">
+            <h3 id="modal-title" class="text-2xl font-bold text-amber-400">提示</h3>
+            <p id="modal-body" class="text-slate-300 text-sm">訊息內容</p>
+            <button onclick="closeModal()" class="w-full bg-amber-600 hover:bg-amber-500 font-bold py-2 rounded-lg transition shadow">
+                確定 (Confirm)
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- JavaScript 遊戲邏輯與交互控制 (Game Logic Script) -->
+    <!-- ========================================================================= -->
+    <script>
+        // -------------------------------------------------------------------------
+        // 1. 全局資料定義 (Data Structures & Constants)
+        // -------------------------------------------------------------------------
+        
+        // 麻將牌型定義列表 (台灣16張麻將套件: 萬、條、筒、字牌)
+        const TILE_TYPES = {
+            WAN:  ['1萬','2萬','3萬','4萬','5萬','6萬','7萬','8萬','9萬'],
+            TIAO: ['1條','2條','3條','4條','5條','6條','7條','8條','9條'],
+            TONG: ['1餅','2餅','3餅','4餅','5餅','6餅','7餅','8餅','9餅'],
+            ZI:   ['東','南','西','北','中','發','白']
+        };
+
+        // 遊戲狀態變數 (Game State Object)
+        let gameState = {
+            wall: [],           // 牌牆 (Deck of remaining tiles)
+            playerHand: [],     // 本家手牌 (Player's current hand tiles)
+            drawnTile: null,    // 本家剛剛摸進的第17張牌 (Newly drawn tile)
+            selectedTileIdx: null, // 當前玩家點選選中的牌索引
+            discards: [],       // 桌面海底棄牌紀錄 (Discarded tiles)
+            playerMelds: [],    // 本家副露 (吃、碰、槓的組合)
+            isPlayerTurn: true, // 目前是否為玩家的回合
+            scores: {           // 四家計分
+                south: 20000,
+                east: 20000,
+                north: 20000,
+                west: 20000
+            }
+        };
+
+        // -------------------------------------------------------------------------
+        // 2. 音效系統 (Web Audio API Sound Effects)
+        // -------------------------------------------------------------------------
+        
+        // 使用 Web Audio API 生成擬真麻將碰撞與敲擊聲音 (無需外部音訊檔案)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playTileSound(frequency = 800, duration = 0.08) {
+            try {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + duration);
+                
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {
+                // 忽略音效播放受限警報
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // 3. 牌局初始化與洗牌發牌 (Initialization & Shuffling)
+        // -------------------------------------------------------------------------
+
+        // 初始化/重置全新遊戲
+        function initGame() {
+            // A. 建立完整 144 張麻將牌池 (每種牌各4張)
+            let fullDeck = [];
+            Object.values(TILE_TYPES).forEach(suite => {
+                suite.forEach(tileName => {
+                    for (let i = 0; i < 4; i++) {
+                        fullDeck.push(tileName);
+                    }
+                });
+            });
+
+            // B. 洗牌演算法 (Fisher-Yates Shuffle)
+            for (let i = fullDeck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [fullDeck[i], fullDeck[j]] = [fullDeck[j], fullDeck[i]];
+            }
+
+            // C. 初始化遊戲狀態數據
+            gameState.wall = fullDeck;
+            gameState.playerHand = [];
+            gameState.drawnTile = null;
+            gameState.selectedTileIdx = null;
+            gameState.discards = [];
+            gameState.playerMelds = [];
+            gameState.isPlayerTurn = true;
+
+            // D. 發牌給本家 (16張手牌)
+            for (let i = 0; i < 16; i++) {
+                gameState.playerHand.push(gameState.wall.pop());
+            }
+
+            // E. 自動對手牌進行理牌/排序
+            sortHandLogic();
+
+            // F. 繪製對家與左右家暗牌
+            renderOpponentHands();
+
+            // G. 更新介面
+            updateUI();
+            
+            // H. 提示訊息與音效
+            updateStatus("遊戲開局！請點選「摸牌」開始您的第一回合。");
+            playTileSound(600, 0.15);
+        }
+
+        // -------------------------------------------------------------------------
+        // 4. UI 渲染邏輯 (UI Rendering & Mahjong Tile Creation)
+        // -------------------------------------------------------------------------
+
+        // 建立單張麻將牌 DOM 元素 (包含樣式與點擊事件)
+        function createTileElement(tileName, isHandTile = false, index = null) {
+            const tileNode = document.createElement('div');
+            
+            // 基礎 Class 設定
+            tileNode.className = `mj-tile ${isHandTile ? 'mj-tile-hand' : ''}`;
+            
+            // 拆解牌面文字與花色類別
+            let textClass = 'text-wan';
+            let mainChar = tileName;
+
+            if (tileName.includes('萬')) textClass = 'text-wan';
+            else if (tileName.includes('條')) textClass = 'text-tiao';
+            else if (tileName.includes('餅')) textClass = 'text-tong';
+            else {
+                if (tileName === '中') textClass = 'text-zhong';
+                else if (tileName === '發') textClass = 'text-fa';
+                else if (tileName === '白') textClass = 'text-bai';
+                else textClass = 'text-feng';
+            }
+
+            // 牌面文字內容佈局
+            tileNode.innerHTML = `
+                <span class="text-xs font-bold ${textClass} leading-none mb-0.5">${tileName.length > 1 ? tileName[0] : ''}</span>
+                <span class="text-base sm:text-lg font-black ${textClass} leading-none">${tileName.length > 1 ? tileName[1] : tileName}</span>
+            `;
+
+            // 如果是本家手牌，加入點擊選取事件
+            if (isHandTile && index !== null) {
+                if (gameState.selectedTileIdx === index) {
+                    tileNode.classList.add('mj-tile-selected');
+                }
+
+                tileNode.onclick = () => {
+                    playTileSound(900, 0.05);
+                    if (gameState.selectedTileIdx === index) {
+                        // 再次點擊同一張牌則打出牌
+                        discardTile(index);
+                    } else {
+                        // 選取手牌
+                        gameState.selectedTileIdx = index;
+                        updateUI();
+                    }
+                };
+            }
+
+            return tileNode;
+        }
+
+        // 刷新 UI 介面整體狀態
+        function updateUI() {
+            // 1. 更新牌牆剩餘張數
+            document.getElementById('wall-count').innerText = gameState.wall.length;
+
+            // 2. 渲染本家手牌區
+            const handContainer = document.getElementById('player-hand');
+            handContainer.innerHTML = '';
+            gameState.playerHand.forEach((tile, idx) => {
+                const tileElem = createTileElement(tile, true, idx);
+                handContainer.appendChild(tileElem);
+            });
+
+            // 3. 渲染摸牌區 (第17張牌)
+            const drawnContainer = document.getElementById('drawn-tile-container');
+            drawnContainer.innerHTML = '';
+            if (gameState.drawnTile) {
+                const drawnIdx = gameState.playerHand.length; // 設定獨特索引
+                const drawnElem = createTileElement(gameState.drawnTile, true, drawnIdx);
+                
+                // 特別處理摸牌的點擊出牌邏輯
+                if (gameState.selectedTileIdx === drawnIdx) {
+                    drawnElem.classList.add('mj-tile-selected');
+                }
+                drawnElem.onclick = () => {
+                    playTileSound(900, 0.05);
+                    if (gameState.selectedTileIdx === drawnIdx) {
+                        discardDrawnTile();
+                    } else {
+                        gameState.selectedTileIdx = drawnIdx;
+                        updateUI();
+                    }
+                };
+                
+                drawnContainer.appendChild(drawnElem);
+            }
+
+            // 4. 渲染海底棄牌區
+            const riverContainer = document.getElementById('discard-river');
+            riverContainer.innerHTML = '';
+            gameState.discards.forEach((tile, index) => {
+                const discardElem = createTileElement(tile, false);
+                // 轉為較小的尺寸放入海底區
+                discardElem.style.transform = 'scale(0.7)';
+                discardElem.style.margin = '-4px';
+                if (index === gameState.discards.length - 1) {
+                    discardElem.classList.add('discard-animate');
+                }
+                riverContainer.appendChild(discardElem);
+            });
+
+            // 5. 按鈕狀態啟用/停用控制
+            const hasSelection = gameState.selectedTileIdx !== null;
+            document.getElementById('btn-discard').disabled = !hasSelection;
+            document.getElementById('btn-draw').disabled = gameState.drawnTile !== null || !gameState.isPlayerTurn;
+        }
+
+        // 繪製三家對手的暗牌視覺效果 (純視覺裝飾)
+        function renderOpponentHands() {
+            ['north', 'west', 'east'].forEach(pos => {
+                const container = document.getElementById(`hand-${pos}`);
+                container.innerHTML = '';
+                const count = (pos === 'north') ? 16 : 12;
+                for (let i = 0; i < count; i++) {
+                    const backTile = document.createElement('div');
+                    backTile.className = 'mj-tile mj-tile-back';
+                    if (pos === 'west' || pos === 'east') {
+                        backTile.style.height = '24px';
+                        backTile.style.width = '38px';
+                    }
+                    container.appendChild(backTile);
+                }
+            });
+        }
+
+        // -------------------------------------------------------------------------
+        // 5. 遊戲操作邏輯 (Game Play Operations & Actions)
+        // -------------------------------------------------------------------------
+
+        // A. 本家摸牌 (Draw Tile)
+        function playerDrawTile() {
+            if (gameState.drawnTile !== null) {
+                updateStatus("您已經摸牌了，請選擇一張牌打出！");
+                return;
+            }
+            if (gameState.wall.length === 0) {
+                showModal("流局", "牌牆已無麻將牌，本局流局！");
+                return;
+            }
+
+            // 從牌牆取出頂牌
+            gameState.drawnTile = gameState.wall.pop();
+            gameState.selectedTileIdx = gameState.playerHand.length; // 預設選中剛摸到的牌
+            
+            playTileSound(750, 0.1);
+            updateStatus(`您摸到了 【${gameState.drawnTile}】，請點選手牌並打出。`);
+            updateUI();
+        }
+
+        // B. 打出手牌 (Discard Hand Tile)
+        function discardTile(index) {
+            if (index < gameState.playerHand.length) {
+                const discarded = gameState.playerHand.splice(index, 1)[0];
+                
+                // 如果先前有摸牌，將摸到的第17張牌移入正式手牌
+                if (gameState.drawnTile) {
+                    gameState.playerHand.push(gameState.drawnTile);
+                    gameState.drawnTile = null;
+                }
+
+                gameState.discards.push(discarded);
+                playTileSound(400, 0.12);
+                updateStatus(`您打出了 【${discarded}】。`);
+            } else {
+                discardDrawnTile();
+                return;
+            }
+
+            gameState.selectedTileIdx = null;
+            sortHandLogic(); // 打牌後自動重新理牌
+            updateUI();
+
+            // 模擬其他家順時針打牌與簡單 AI 模擬
+            simulateOpponentsTurn();
+        }
+
+        // C. 打出剛摸到的牌 (Discard Drawn Tile)
+        function discardDrawnTile() {
+            if (!gameState.drawnTile) return;
+            
+            const discarded = gameState.drawnTile;
+            gameState.discards.push(discarded);
+            gameState.drawnTile = null;
+            gameState.selectedTileIdx = null;
+
+            playTileSound(400, 0.12);
+            updateStatus(`您打出了摸到的 【${discarded}】。`);
+            updateUI();
+
+            // 模擬對手回合
+            simulateOpponentsTurn();
+        }
+
+        // D. 按鈕觸發打牌 (點選底部「打牌」按鈕)
+        function discardSelectedTile() {
+            if (gameState.selectedTileIdx === null) return;
+            discardTile(gameState.selectedTileIdx);
+        }
+
+        // E. 手牌自動排序邏輯 (Sort Hand Logic)
+        function sortHandLogic() {
+            const order = { '萬': 1, '條': 2, '餅': 3, '字': 4 };
+            
+            gameState.playerHand.sort((a, b) => {
+                const suiteA = a.includes('萬') ? '萬' : a.includes('條') ? '條' : a.includes('餅') ? '餅' : '字';
+                const suiteB = b.includes('萬') ? '萬' : b.includes('條') ? '條' : b.includes('餅') ? '餅' : '字';
+
+                if (order[suiteA] !== order[suiteB]) {
+                    return order[suiteA] - order[suiteB];
+                }
+                return a.localeCompare(b, 'zh-TW');
+            });
+        }
+
+        // F. 理牌按鈕處理函式
+        function sortHandTiles() {
+            sortHandLogic();
+            playTileSound(1000, 0.08);
+            updateUI();
+            updateStatus("已為您自動整理手牌花色。");
+        }
+
+        // -------------------------------------------------------------------------
+        // 6. 模擬 AI 對手與回合輪替 (AI Round Simulation)
+        // -------------------------------------------------------------------------
+
+        // 模擬右家、對家、左家自動摸牌與出牌動作
+        function simulateOpponentsTurn() {
+            gameState.isPlayerTurn = false;
+            const opponents = ['東家 (右家)', '北家 (對家)', '西家 (左家)'];
+            
+            let delay = 600;
+            opponents.forEach((opName, i) => {
+                setTimeout(() => {
+                    if (gameState.wall.length > 0) {
+                        const drawn = gameState.wall.pop();
+                        // AI 隨機打出一張海底牌
+                        gameState.discards.push(drawn);
+                        playTileSound(500, 0.08);
+                        updateStatus(`${opName} 摸牌並打出了 【${drawn}】`);
+                        updateUI();
+                    }
+                    
+                    // 當最後一家 (左家) 模擬完畢，交還控制權給玩家
+                    if (i === opponents.length - 1) {
+                        setTimeout(() => {
+                            gameState.isPlayerTurn = true;
+                            updateStatus("輪到您的回合，請點選「摸牌」！");
+                            updateUI();
+                        }, 500);
+                    }
+                }, delay * (i + 1));
+            });
+        }
+
+        // -------------------------------------------------------------------------
+        // 7. 互動動作處理 (吃、碰、槓、胡與擲骰子)
+        // -------------------------------------------------------------------------
+
+        // 擲骰子功能與動畫
+        function rollDice() {
+            const container = document.getElementById('dice-container');
+            const dices = container.children;
+            
+            playTileSound(1200, 0.2);
+
+            // 加入旋轉動畫類別
+            for (let dice of dices) {
+                dice.classList.add('animate-roll');
+            }
+
+            setTimeout(() => {
+                let sum = 0;
+                for (let dice of dices) {
+                    const val = Math.floor(Math.random() * 6) + 1;
+                    dice.innerText = val;
+                    sum += val;
+                    dice.classList.remove('animate-roll');
+                }
+                updateStatus(`擲骰子結果為：${sum} 點！由 ${getDirectionName(sum)} 開門。`);
+            }, 400);
+        }
+
+        // 根據點數換算開門方位
+        function getDirectionName(point) {
+            const dirs = ['南家 (本家)', '西家', '北家', '東家'];
+            return dirs[(point - 1) % 4];
+        }
+
+        // 觸發 吃/碰/槓/胡 按鈕回應
+        function triggerAction(actionType) {
+            playTileSound(900, 0.15);
+            
+            if (actionType === '胡') {
+                showModal("🎉 大獲全勝！", "恭喜您胡牌了！自摸東風三番，贏得 12,000 分！");
+            } else {
+                updateStatus(`提示: 目前選擇了【${actionType}】動作。`);
+                showModal("動作提示", `您按下「${actionType}」。在完整牌局中，可組合海底最後一張牌進行副露。`);
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // 8. 輔助 UI 函式 (Modal & Status Messages)
+        // -------------------------------------------------------------------------
+
+        // 更新頂部/底部狀態訊息列
+        function updateStatus(msg) {
+            document.getElementById('status-message').innerHTML = `<i class="fa-solid fa-circle-info text-blue-400"></i> ${msg}`;
+        }
+
+        // 開啟彈窗
+        function showModal(title, body) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-body').innerText = body;
+            document.getElementById('game-modal').classList.remove('hidden');
+        }
+
+        // 關閉彈窗
+        function closeModal() {
+            document.getElementById('game-modal').classList.add('hidden');
+        }
+
+        // -------------------------------------------------------------------------
+        // 9. 頁面加載完成自動開局 (Onload Trigger)
+        // -------------------------------------------------------------------------
+        window.onload = function() {
+            initGame();
+        };
+    </script>
+</body>
+</html>
